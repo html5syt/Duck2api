@@ -45,6 +45,7 @@ func InitXVQD(client httpclient.AuroraHttpClient, proxyUrl string) (string, erro
 	Token.M.Lock()
 	defer Token.M.Unlock()
 	if Token.Token == "" {
+		_, _ = InitFEVersion(client, proxyUrl)
 		status, err := postStatus(client, proxyUrl)
 		if err != nil {
 			return "", err
@@ -88,7 +89,7 @@ func POSTconversation(client httpclient.AuroraHttpClient, request duckgotypes.Ap
 	var err error
 
 	for i := 0; i <= maxRetries; i++ {
-		response, err = postConversationOnce(client, request, token)
+		response, err = postConversationOnce(client, request, token, proxyUrl)
 		if err != nil {
 			return nil, err
 		}
@@ -152,7 +153,7 @@ func createHeader() httpclient.AuroraHeaders {
 	return header
 }
 
-func postConversationOnce(client httpclient.AuroraHttpClient, request duckgotypes.ApiRequest, token string) (*http.Response, error) {
+func postConversationOnce(client httpclient.AuroraHttpClient, request duckgotypes.ApiRequest, token string, proxyUrl string) (*http.Response, error) {
 	bodyJSON, err := json.Marshal(request)
 	if err != nil {
 		return &http.Response{}, err
@@ -162,7 +163,7 @@ func postConversationOnce(client httpclient.AuroraHttpClient, request duckgotype
 	header.Set("priority", "u=1, i")
 	header.Set("x-ddg-journey-id", RandomHex(16))
 	header.Set("x-fe-signals", CreateFESignals())
-	if feVersion, err := InitFEVersion(client, ""); err == nil && feVersion != "" {
+	if feVersion, err := InitFEVersion(client, proxyUrl); err == nil && feVersion != "" {
 		header.Set("x-fe-version", feVersion)
 	}
 	header.Set("x-vqd-hash-1", token)
@@ -203,6 +204,7 @@ func InitFEVersion(client httpclient.AuroraHttpClient, proxyUrl string) (string,
 		return "", errors.New("duck.ai version metadata not found")
 	}
 
+	SetFEVersion(string(versionTagMatch[1]), string(versionShaMatch[1]))
 	FEVersion.Token = fmt.Sprintf("%s-%s", versionTagMatch[1], versionShaMatch[1])
 	FEVersion.ExpireAt = time.Now().Add(30 * time.Minute)
 	return FEVersion.Token, nil
