@@ -95,7 +95,6 @@ func ConvertAPIRequestWithOptions(apiRequest officialtypes.APIRequest, reasoning
 			duckgoRequest.AddMessageWithParts(role, parts)
 		}
 	}
-	duckgoRequest.DurableStream = newDurableStream()
 	return duckgoRequest
 }
 
@@ -168,7 +167,7 @@ func extractContentParts(content interface{}) []duckgotypes.ContentPart {
 					if FileStore != nil {
 						if filename, mimeType, data, ok := FileStore(fileID); ok {
 							log.Printf("[DEBUG] FileStore found: %s %s %d bytes", filename, mimeType, len(data))
-							// Image files → convert to JPEG and send as image part
+							// Image files -> convert to JPEG and send as image part
 							if strings.HasPrefix(mimeType, "image/") {
 								webpData := convertToWebP(data, mimeType)
 								b64 := base64.StdEncoding.EncodeToString(webpData)
@@ -179,7 +178,7 @@ func extractContentParts(content interface{}) []duckgotypes.ContentPart {
 									MimeType: "image/webp",
 								})
 							} else {
-								// Non-image files (PDF, text, etc.) → embed as text context
+								// Non-image files (PDF, text, etc.) -> embed as text context
 								fileText := extractTextContent(data, mimeType)
 								if len(fileText) > 50000 {
 									fileText = fileText[:50000] + "\n...(truncated)"

@@ -96,7 +96,7 @@ type ApiRequest struct {
 	ReasoningEffort            string        `json:"reasoningEffort"`
 	CanUseApproxLocation       *bool         `json:"canUseApproxLocation"`
 	CanDelegateImageGeneration *bool         `json:"canDelegateImageGeneration"`
-	DurableStream              DurableStream `json:"durableStream"`
+	DurableStream              *DurableStream `json:"durableStream,omitempty"`
 }
 
 func (a *ApiRequest) AddMessage(role string, content string) {
