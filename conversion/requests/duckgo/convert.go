@@ -43,18 +43,28 @@ func ConvertAPIRequestWithOptions(apiRequest officialtypes.APIRequest, reasoning
 
 	modelLower := strings.ToLower(inputModel)
 	switch {
-	case strings.HasPrefix(modelLower, "gpt-3.5"):
-		realModel = "gpt-4o-mini"
-	case strings.HasPrefix(modelLower, "claude-3-haiku"):
-		realModel = "claude-3-haiku-20240307"
-	case strings.HasPrefix(modelLower, "llama-3.3-70b"):
-		realModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-	case strings.HasPrefix(modelLower, "mixtral-8x7b"):
-		realModel = "mistralai/Mixtral-8x7B-Instruct-v0.1"
-	case strings.HasPrefix(modelLower, "llama-4-scout"):
-		realModel = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
-	case strings.HasPrefix(modelLower, "mistral-small"):
-		realModel = "mistralai/Mistral-Small-24B-Instruct-2501"
+	case strings.HasPrefix(modelLower, "gpt-5.6"):
+		realModel = "gpt-5.6-terra"
+	case strings.HasPrefix(modelLower, "gpt-6"):
+		realModel = "gpt-6-luna"
+	case strings.HasPrefix(modelLower, "gpt-5.4-mini"):
+		realModel = "gpt-5.4-mini"
+	case strings.HasPrefix(modelLower, "gpt-5.4"), strings.HasPrefix(modelLower, "gpt-5.4-nano"):
+		realModel = "gpt-5.4-mini"
+	case strings.HasPrefix(modelLower, "gpt-3.5"), strings.HasPrefix(modelLower, "gpt-4o-mini"), strings.HasPrefix(modelLower, "gpt-4o"), strings.HasPrefix(modelLower, "gpt-4"):
+		realModel = "gpt-5.4-mini"
+	case strings.HasPrefix(modelLower, "claude-sonnet"), strings.HasPrefix(modelLower, "claude-3-5-sonnet"), strings.HasPrefix(modelLower, "claude-3.5-sonnet"), strings.HasPrefix(modelLower, "claude-3-7-sonnet"), strings.HasPrefix(modelLower, "claude-3.7-sonnet"):
+		realModel = "claude-sonnet-4-6"
+	case strings.HasPrefix(modelLower, "claude-opus"), strings.HasPrefix(modelLower, "claude-3-opus"), strings.HasPrefix(modelLower, "claude-3.5-opus"):
+		realModel = "claude-opus-4-8"
+	case strings.HasPrefix(modelLower, "claude-3-haiku"), strings.HasPrefix(modelLower, "claude-3-5-haiku"):
+		realModel = "gpt-5.4-mini"
+	case strings.HasPrefix(modelLower, "llama-3.3-70b"), strings.HasPrefix(modelLower, "llama-4-scout"), strings.HasPrefix(modelLower, "llama"):
+		realModel = "tinfoil/gpt-oss-120b"
+	case strings.HasPrefix(modelLower, "mixtral-8x7b"), strings.HasPrefix(modelLower, "mistral-small"), strings.HasPrefix(modelLower, "mistral"):
+		realModel = "mistral-small-2603"
+	case strings.HasPrefix(modelLower, "gemma"):
+		realModel = "tinfoil/gemma4-31b"
 	}
 
 	duckgoRequest.Model = realModel
