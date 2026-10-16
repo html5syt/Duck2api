@@ -1,15 +1,11 @@
 // Package duckgo 生成 DuckDuckGo AI Chat 的 X-Vqd-Hash-1 头 (JSA 挑战响应).
 //
-// 流程与 entry.duckai.28d59466fe10c017873c.deob.pretty.js:53683-53768 完全一致:
-//  1. base64 解码服务端挑战 → JS 代码
+// 流程与 entry.duckai 对应:
+//  1. base64 解码服务端挑战 -> JS 代码
 //  2. 在 JS 运行时中执行挑战代码, 获取 {client_hashes, meta}
-//  3. 对每个 client_hash 做 SHA-256 → base64  (JS crypto.subtle.digest 的替代)
+//  3. 对每个 client_hash 做 SHA-256 -> base64 (JS crypto.subtle.digest 的替代)
 //  4. 补充 meta (origin, stack, duration)
-//  5. JSON.stringify → base64 编码返回
-//
-// 错误回退也匹配 JS c() 函数 (line 53743-53751) 的格式:
-//
-//	btoa(decoded + "::" + message + "::" + stack + "::" + origin)
+//  5. JSON.stringify -> base64 编码返回
 package duckgo
 
 import (
@@ -18,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -25,20 +22,35 @@ import (
 
 const (
 	defaultVQDUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
-	defaultVQDStack     = "Error\nat l (https://duck.ai/dist/duckai-dist/entry.duckai.c0a8c794abcbc8ee2d3c.js:2:1446307)\nat async https://duck.ai/dist/duckai-dist/entry.duckai.c0a8c794abcbc8ee2d3c.js:2:1294181"
+	defaultVQDStack     = "Error\nat l (https://duck.ai/dist/duckai-dist/entry.duckai.295750b5de73538d3230.js:2:2093850)\nat async https://duck.ai/dist/duckai-dist/entry.duckai.295750b5de73538d3230.js:2:1834378"
 	defaultVQDOrigin    = "https://duck.ai"
 )
 
+var (
+	feVersionLock     sync.RWMutex
+	currentBeVersion  = "serp_20261016_090610_ET"
+	currentFeChatHash = "532f77f0f8f67d6d5329fe07a96ea30ee29a242c"
+)
+
+// SetFEVersion 动态更新前端版本标识，保持与 duck.ai HTML 和 x-fe-version 请求头一致
+func SetFEVersion(beVersion, feChatHash string) {
+	feVersionLock.Lock()
+	defer feVersionLock.Unlock()
+	if beVersion != "" {
+		currentBeVersion = beVersion
+	}
+	if feChatHash != "" {
+		currentFeChatHash = feChatHash
+	}
+}
+
+func getFEVersion() (string, string) {
+	feVersionLock.RLock()
+	defer feVersionLock.RUnlock()
+	return currentBeVersion, currentFeChatHash
+}
+
 // GenerateVQDHash 根据服务端返回的 X-Vqd-Hash-1 挑战值, 计算新的 hash 值.
-//
-//	vqdHashRequest: 服务端响应头的 X-Vqd-Hash-1 值 (base64)
-//	返回: 新的 X-Vqd-Hash-1 请求头值 (base64)
-//
-// 环境变量覆盖:
-//
-//	X_USER_AGENT   - 替换默认 UA
-//	X_VQD_STACK    - 替换默认调用栈 (meta.stack)
-//	X_VQD_ORIGIN   - 替换默认 origin (默认 https://duck.ai)
 func GenerateVQDHash(vqdHashRequest string) (string, error) {
 	if vqdHashRequest == "" {
 		return "", errors.New("empty vqd hash request")
@@ -52,7 +64,7 @@ func GenerateVQDHash(vqdHashRequest string) (string, error) {
 
 	payload, err := executeVQDHashScript(jsCode)
 	if err != nil {
-		// 匹配 JS c(e, t) 的 fallback 格式 (line 53743-53751)
+		// 匹配 JS c(e, t) 的 fallback 格式
 		fallback := fmt.Sprintf("%s::%s::%s::%s",
 			jsCode, err.Error(), vqdStack(), vqdOrigin())
 		return base64.StdEncoding.EncodeToString([]byte(fallback)), nil
@@ -93,14 +105,11 @@ func executeVQDHashScript(jsCode string) (string, error) {
 		return "", fmt.Errorf("initialize vqd browser mock: %w", err)
 	}
 
-	// 执行挑战 JS — 挑战代码是一个 JS 表达式, 求值后应返回
-	// { client_hashes: [...], meta: { ... } }
 	value, err := vm.RunString(jsCode)
 	if err != nil {
 		return "", fmt.Errorf("execute vqd hash script: %s", jsErrorString(vm, err, nil))
 	}
 
-	// 处理 Promise 返回值
 	if promise, ok := value.Export().(*goja.Promise); ok {
 		switch promise.State() {
 		case goja.PromiseStateFulfilled:
@@ -112,7 +121,6 @@ func executeVQDHashScript(jsCode string) (string, error) {
 		}
 	}
 
-	// 注入结果和时间, 执行 mutation 脚本
 	durationMs := time.Now().UnixMilli() - startMs
 	if err := vm.Set("__vqd_result", value); err != nil {
 		return "", fmt.Errorf("set __vqd_result: %w", err)
@@ -132,10 +140,13 @@ func executeVQDHashScript(jsCode string) (string, error) {
 }
 
 func installVQDHelpers(vm *goja.Runtime) error {
+	beVer, feHash := getFEVersion()
 	helpers := map[string]interface{}{
 		"__goUserAgent":    vqdUserAgent(),
 		"__goOrigin":       vqdOrigin(),
 		"__goStack":        vqdStack(),
+		"__goBeVersion":    beVer,
+		"__goFeHash":       feHash,
 		"__goSha256Base64": goSha256Base64,
 		"__goBtoa":         func(v string) string { return base64.StdEncoding.EncodeToString([]byte(v)) },
 		"__goAtob":         func(v string) (string, error) { b, err := base64.StdEncoding.DecodeString(v); return string(b), err },
@@ -173,14 +184,6 @@ func jsErrorString(vm *goja.Runtime, err error, value goja.Value) string {
 	return value.String()
 }
 
-// vqdResultMutationScript 封装最终结果.
-// 对应 JS l() 中 (line 53713-53737):
-//
-//	btoa(JSON.stringify({
-//	  ...a,                                    // 保留挑战返回的其他字段
-//	  client_hashes: a.client_hashes.map(v => btoa(sha256(v))),
-//	  meta: {...a.meta, origin, stack, duration}
-//	}))
 const vqdResultMutationScript = `
 (function () {
   if (!__vqd_result || typeof __vqd_result !== "object") {
@@ -190,13 +193,10 @@ const vqdResultMutationScript = `
     throw new Error("VQD hash script did not return client_hashes");
   }
 
-  // SHA-256 hash each client_hash value (line 53719-53728)
-  // 挑战返回什么值就 hash 什么值, 不做替换
   var hashed = __vqd_result.client_hashes.map(function (value) {
     return __goSha256Base64(String(value));
   });
 
-  // 合并 meta (line 53729-53733): 保留挑战返回的 meta 字段, 覆盖 origin/stack/duration
   var meta = {};
   if (__vqd_result.meta && typeof __vqd_result.meta === "object") {
     for (var k in __vqd_result.meta) {
@@ -207,9 +207,8 @@ const vqdResultMutationScript = `
   }
   meta.origin = __goOrigin;
   meta.stack = __goStack;
-  meta.duration = __vqdDurationMs;
+  meta.duration = String(__vqdDurationMs);
 
-  // 构造最终对象: 保留挑战返回的除 client_hashes/meta 外的其他字段
   var result = {};
   for (var k in __vqd_result) {
     if (Object.prototype.hasOwnProperty.call(__vqd_result, k)) {
@@ -225,9 +224,6 @@ const vqdResultMutationScript = `
 })();
 `
 
-// vqdBrowserPrelude 模拟浏览器环境, 供挑战 JS 代码运行.
-// 原始代码运行在沙箱 iframe 中 (CSP: default-src 'none'; script-src 'unsafe-inline'),
-// 需要基本的 BOM/DOM API 才能执行.
 const vqdBrowserPrelude = `
 (function () {
   "use strict";
@@ -258,7 +254,7 @@ const vqdBrowserPrelude = `
     languages: ["en-US", "en"],
     cookieEnabled: true,
     onLine: true,
-    hardwareConcurrency: 4,
+    hardwareConcurrency: 8,
     maxTouchPoints: 0,
     vendor: "Google Inc.",
     vendorSub: "",
@@ -296,7 +292,7 @@ const vqdBrowserPrelude = `
     this.parentNode = null;
     this.ownerDocument = null;
     this.attributes = {};
-    this.innerHTML = "";
+    this._innerHTML = "";
     this.textContent = "";
     this.srcdoc = "";
     this.src = "";
@@ -304,16 +300,38 @@ const vqdBrowserPrelude = `
       cssText: "",
       display: "inline-block",
       getPropertyValue: function (n) {
-        return String(n).toLowerCase() === "display" ? this.display || "inline-block" : "";
+        var k = String(n || "").toLowerCase();
+        if (k === "display") return this.display || "inline-block";
+        return "";
       },
     };
-    this.offsetWidth = 1;
-    this.offsetHeight = 1;
-    this.scrollHeight = 1;
-    this.clientWidth = 1;
-    this.clientHeight = 1;
+    this.offsetWidth = 10;
+    this.offsetHeight = 10;
+    this.scrollHeight = 10;
+    this.clientWidth = 10;
+    this.clientHeight = 10;
   }
   Element__.prototype.constructor = Element__;
+
+  Object.defineProperty(Element__.prototype, "innerHTML", {
+    get: function () { return this._innerHTML || ""; },
+    set: function (val) {
+      var str = String(val || "");
+      if (str === "<div><div></div><div></div") {
+        this._innerHTML = "<div><div></div><div></div></div>";
+        var div1 = new HTMLDivElement__();
+        var div1_1 = new HTMLDivElement__();
+        var div1_2 = new HTMLDivElement__();
+        div1.appendChild(div1_1);
+        div1.appendChild(div1_2);
+        this.children = [div1];
+        return;
+      }
+      this._innerHTML = str;
+    },
+    configurable: true
+  });
+
   Element__.prototype.appendChild = function (child) {
     child.parentNode = this;
     child.ownerDocument = this.ownerDocument;
@@ -325,17 +343,18 @@ const vqdBrowserPrelude = `
     if (idx >= 0) { this.children.splice(idx, 1); child.parentNode = null; }
     return child;
   };
-  // 内部函数: 匹配属性选择器 meta[http-equiv="..."]
+
   function matchesAttributeSelector__(el, selector) {
     var re = /^([a-z0-9_-]+)\[([a-z0-9_-]+)=(["']?)([^"'\]]+)\3\]$/i;
     var m = selector.match(re);
     if (!m) return false;
     var tag = m[1].toLowerCase(), attr = m[2], val = m[4];
     if (tag !== "*" && el.tagName && el.tagName.toLowerCase() !== tag) return false;
-    return el.getAttribute(attr) === val;
+    var elVal = el.getAttribute(attr);
+    if (elVal === null || elVal === undefined) return false;
+    return String(elVal).toLowerCase() === String(val).toLowerCase();
   }
 
-  // 内部函数: 递归收集匹配元素
   function collectMatching__(el, matchFn, results) {
     if (matchFn(el)) results.push(el);
     if (el.children && el.children.length > 0) {
@@ -346,18 +365,25 @@ const vqdBrowserPrelude = `
   }
 
   Element__.prototype.querySelectorAll = function (selector) {
-    selector = String(selector || "").toLowerCase();
-    // 特殊: #jsa
-    if (selector === "#jsa" && this.ownerDocument && this.ownerDocument.__jsa__) {
+    var raw = String(selector || "").trim();
+    if (raw === "*") {
+      var all = [];
+      if (this.children && this.children.length > 0) {
+        for (var i = 0; i < this.children.length; i++) {
+          collectMatching__(this.children[i], function () { return true; }, all);
+        }
+      }
+      return new NodeList__(all);
+    }
+    if (raw.toLowerCase() === "#jsa" && this.ownerDocument && this.ownerDocument.__jsa__) {
       return new NodeList__([this.ownerDocument.__jsa__]);
     }
-    // 特殊: meta[http-equiv="Content-Security-Policy"]
-    if (selector.indexOf("meta[") === 0) {
+    if (raw.indexOf("meta[") === 0) {
       var results = [];
       if (this.children && this.children.length > 0) {
         for (var i = 0; i < this.children.length; i++) {
           collectMatching__(this.children[i], function(el) {
-            return matchesAttributeSelector__(el, selector);
+            return matchesAttributeSelector__(el, raw);
           }, results);
         }
       }
@@ -370,13 +396,16 @@ const vqdBrowserPrelude = `
     return list.length > 0 ? list[0] : null;
   };
   Element__.prototype.getAttribute = function (name) {
-    return this.attributes[String(name)] || null;
+    var k = String(name || "").toLowerCase();
+    return this.attributes[k] !== undefined ? this.attributes[k] : (this.attributes[String(name)] || null);
   };
   Element__.prototype.setAttribute = function (name, value) {
+    var k = String(name || "").toLowerCase();
+    this.attributes[k] = String(value);
     this.attributes[String(name)] = String(value);
   };
   Element__.prototype.getBoundingClientRect = function () {
-    return { width: 1, height: 1, top: 0, right: 1, bottom: 1, left: 0 };
+    return { width: 10, height: 10, top: 0, right: 10, bottom: 10, left: 0 };
   };
   Element__.prototype.addEventListener = function () {};
   Element__.prototype.removeEventListener = function () {};
@@ -392,7 +421,19 @@ const vqdBrowserPrelude = `
   HTMLDivElement__.prototype = Object.create(HTMLElement__.prototype);
   HTMLDivElement__.prototype.constructor = HTMLDivElement__;
 
-  function HTMLIFrameElement__() { HTMLElement__.apply(this, arguments); }
+  function HTMLIFrameElement__() {
+    HTMLElement__.apply(this, arguments);
+    var subDoc = makeDocument__();
+    var subWin = {
+      self: null, window: null, top: globalThis, parent: globalThis, document: subDoc,
+      Array: Array, Object: Object, Promise: Promise, Symbol: Symbol, JSON: JSON
+    };
+    subWin.self = subWin;
+    subWin.window = subWin;
+    subDoc.defaultView = subWin;
+    this.contentWindow = subWin;
+    this.contentDocument = subDoc;
+  }
   HTMLIFrameElement__.prototype = Object.create(HTMLElement__.prototype);
   HTMLIFrameElement__.prototype.constructor = HTMLIFrameElement__;
 
@@ -401,13 +442,13 @@ const vqdBrowserPrelude = `
   HTMLScriptElement__.prototype.constructor = HTMLScriptElement__;
 
   function createElement__(tagName) {
-    tagName = String(tagName || "").toLowerCase();
+    var t = String(tagName || "").toLowerCase();
     var el;
-    if (tagName === "div") el = new HTMLDivElement__();
-    else if (tagName === "iframe") el = new HTMLIFrameElement__();
-    else if (tagName === "script") el = new HTMLScriptElement__();
-    else el = new Element__(tagName);
-    Element__.call(el, tagName);
+    if (t === "div") el = new HTMLDivElement__();
+    else if (t === "iframe") el = new HTMLIFrameElement__();
+    else if (t === "script") el = new HTMLScriptElement__();
+    else el = new Element__(t);
+    Element__.call(el, t);
     return el;
   }
 
@@ -429,8 +470,8 @@ const vqdBrowserPrelude = `
     var head = new Element__("head");
     var body = new Element__("body");
     docEl.ownerDocument = docEl;
-    head.ownerDocument = head;
-    body.ownerDocument = body;
+    head.ownerDocument = docEl;
+    body.ownerDocument = docEl;
     docEl.appendChild(head);
     docEl.appendChild(body);
 
@@ -458,10 +499,10 @@ const vqdBrowserPrelude = `
       removeEventListener: function () {},
       querySelectorAll: function (selector) { return docEl.querySelectorAll(selector); },
       querySelector: function (selector) {
-        return selector === "#jsa" && this.__jsa__ ? this.__jsa__ : docEl.querySelector(selector);
+        return String(selector).toLowerCase() === "#jsa" && this.__jsa__ ? this.__jsa__ : docEl.querySelector(selector);
       },
       getElementById: function (id) {
-        return id === "jsa" && this.__jsa__ ? this.__jsa__ : null;
+        return String(id).toLowerCase() === "jsa" && this.__jsa__ ? this.__jsa__ : null;
       },
     };
     docEl.ownerDocument = doc;
@@ -470,25 +511,19 @@ const vqdBrowserPrelude = `
     return doc;
   }
 
-  // ===== Main document =====
   var doc__ = makeDocument__();
-
-  // ===== Sandbox iframe =====
   var contentDoc__ = makeDocument__();
-  // CSP meta
   var cspMeta__ = contentDoc__.createElement("meta");
   cspMeta__.setAttribute("http-equiv", "Content-Security-Policy");
   cspMeta__.setAttribute("content", "default-src 'none'; script-src 'unsafe-inline';");
   contentDoc__.head.appendChild(cspMeta__);
 
-  // iframe element
   var jsaFrame__ = doc__.createElement("iframe");
   jsaFrame__.setAttribute("id", "jsa");
   jsaFrame__.setAttribute("sandbox", "allow-scripts allow-same-origin");
   jsaFrame__.style.cssText = "position: absolute; left: -9999px; top: -9999px;";
   jsaFrame__.srcdoc = "<!DOCTYPE html>\n<html>\n<head>\n<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline';\">\n</head>\n<body></body>\n</html>";
 
-  // Iframe content window — the challenge code runs here
   var contentWin__ = {
     Array: Array, Promise: Promise, Proxy: Proxy, Symbol: Symbol,
     Object: Object, JSON: JSON, Math: Math, Date: Date,
@@ -520,7 +555,6 @@ const vqdBrowserPrelude = `
     performance: { now: function () { var t = Date.now(); return t % 1000 + Math.random(); } },
     console: { log: function () {}, warn: function () {}, error: function () {}, info: function () {}, debug: function () {} },
     __jsaCallbacks__: {},
-    // === Window identity checks ===
     constructor: function Window() {},
     navigator: navigator__,
   };
@@ -528,8 +562,9 @@ const vqdBrowserPrelude = `
   contentWin__.window = contentWin__;
   contentWin__.top = globalThis;
   contentWin__.parent = globalThis;
-  contentWin__[Symbol.toStringTag] = "Window";
-  // Object.getOwnPropertyNames support for window property enumeration
+  if (typeof Symbol !== "undefined" && Symbol.toStringTag) {
+    contentWin__[Symbol.toStringTag] = "Window";
+  }
   contentWin__.Window = function Window() {};
   contentWin__.Window.prototype = contentWin__;
   contentDoc__.defaultView = contentWin__;
@@ -539,7 +574,6 @@ const vqdBrowserPrelude = `
   doc__.body.appendChild(jsaFrame__);
   doc__.__jsa__ = jsaFrame__;
 
-  // ===== Global property install =====
   function defProp__(obj, name, value) {
     Object.defineProperty(obj, name, { value: value, writable: true, configurable: true });
   }
@@ -556,13 +590,9 @@ const vqdBrowserPrelude = `
   defProp__(globalThis, "HTMLIFrameElement", HTMLIFrameElement__);
   defProp__(globalThis, "HTMLScriptElement", HTMLScriptElement__);
   defProp__(globalThis, "NodeList", NodeList__);
-  defProp__(globalThis, "__DDG_BE_VERSION__", "dev");
-  defProp__(globalThis, "__DDG_FE_CHAT_HASH__", "hash");
+  defProp__(globalThis, "__DDG_BE_VERSION__", typeof __goBeVersion !== "undefined" ? __goBeVersion : "serp_20261016_090610_ET");
+  defProp__(globalThis, "__DDG_FE_CHAT_HASH__", typeof __goFeHash !== "undefined" ? __goFeHash : "532f77f0f8f67d6d5329fe07a96ea30ee29a242c");
   defProp__(globalThis, "Window", function Window() {});
-  try { defProp__(globalThis.Window, "prototype", globalThis); } catch (e) {
-    // Goja 的 Window 构造函数的 prototype 不可重新定义, 跳过
-  }
-  // Symbol.toStringTag: 让 Object.prototype.toString.call(window) === "[object Window]"
   if (typeof Symbol !== "undefined" && Symbol.toStringTag) {
     defProp__(globalThis, Symbol.toStringTag, "Window");
     defProp__(contentWin__, Symbol.toStringTag, "Window");
@@ -570,7 +600,17 @@ const vqdBrowserPrelude = `
   defProp__(globalThis, "btoa", function (v) { return __goBtoa(v); });
   defProp__(globalThis, "atob", function (v) { return __goAtob(v); });
   defProp__(globalThis, "getComputedStyle", function (el) {
-    return el && el.style ? el.style : { getPropertyValue: function () { return ""; }, cssText: "" };
+    var disp = "inline-block";
+    if (el && el.style && el.style.cssText) {
+      var m = el.style.cssText.match(/display\s*:\s*([^;]+)/i);
+      if (m) disp = m[1].trim();
+    }
+    return {
+      getPropertyValue: function (prop) {
+        if (String(prop).toLowerCase() === "display") return disp;
+        return "";
+      }
+    };
   });
   defProp__(globalThis, "setTimeout", function (fn) { if (typeof fn === "function") fn(); return 0; });
   defProp__(globalThis, "clearTimeout", function () {});
@@ -636,13 +676,5 @@ const vqdBrowserPrelude = `
     var img = { width: 0, height: 0, src: "", onload: null, onerror: null, naturalWidth: 0, naturalHeight: 0, complete: false };
     return img;
   });
-
-  // Fix constructor .name for challenge compatibility
-  try { Object.defineProperty(NodeList, "name", { value: "NodeList", configurable: true }); } catch (e) {}
-  try { Object.defineProperty(Element, "name", { value: "Element", configurable: true }); } catch (e) {}
-  try { Object.defineProperty(HTMLElement, "name", { value: "HTMLElement", configurable: true }); } catch (e) {}
-  try { Object.defineProperty(HTMLDivElement, "name", { value: "HTMLDivElement", configurable: true }); } catch (e) {}
-  try { Object.defineProperty(HTMLIFrameElement, "name", { value: "HTMLIFrameElement", configurable: true }); } catch (e) {}
-  try { Object.defineProperty(HTMLScriptElement, "name", { value: "HTMLScriptElement", configurable: true }); } catch (e) {}
 })();
 `
