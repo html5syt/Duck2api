@@ -11,7 +11,7 @@ permissions:
   packages: write
 
 env:
-  GHCR_REPO: ghcr.io/aurora-develop/duck2api
+  GHCR_REPO: ghcr.io/html5syt/duck2api
 
 jobs:
   docker:
