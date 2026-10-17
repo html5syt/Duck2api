@@ -43,6 +43,8 @@ func ConvertAPIRequestWithOptions(apiRequest officialtypes.APIRequest, reasoning
 
 	modelLower := strings.ToLower(inputModel)
 	switch {
+	case strings.HasPrefix(modelLower, "gpt-image"), strings.HasPrefix(modelLower, "dall-e"):
+		realModel = "gpt-6-luna"
 	case strings.HasPrefix(modelLower, "gpt-5.6"):
 		realModel = "gpt-5.6-terra"
 	case strings.HasPrefix(modelLower, "gpt-6"):

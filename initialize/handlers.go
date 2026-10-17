@@ -421,7 +421,8 @@ func (h *Handler) imageGenerations(c *gin.Context) {
 
 	// Build a chat request with image generation enabled
 	model := req.Model
-	if model == "" {
+	modelLower := strings.ToLower(model)
+	if model == "" || strings.HasPrefix(modelLower, "gpt-image") || strings.HasPrefix(modelLower, "dall-e") {
 		model = "gpt-6-luna"
 	}
 
@@ -593,6 +594,11 @@ func (h *Handler) handleImageEditJSON(c *gin.Context, req officialtypes.ImageEdi
 }
 
 func (h *Handler) doImageEdit(c *gin.Context, prompt string, model string, imageB64 string, reasoningEffort string) {
+	modelLower := strings.ToLower(model)
+	if model == "" || strings.HasPrefix(modelLower, "gpt-image") || strings.HasPrefix(modelLower, "dall-e") {
+		model = "gpt-6-luna"
+	}
+
 	// Build the prompt with image context
 	editPrompt := prompt
 

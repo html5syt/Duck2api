@@ -89,5 +89,17 @@ func parseDuckDuckGoModels(body []byte, created int64) (openAIModelsResponse, er
 			OwnedBy: model.Provider,
 		})
 	}
+
+	// 挂载图像生成模型，确保生图插件和客户端在 /v1/models 中可识别
+	imageModels := []string{"gpt-image-1", "dall-e-3", "dall-e-2"}
+	for _, imgID := range imageModels {
+		result.Data = append(result.Data, openAIModel{
+			ID:      imgID,
+			Object:  "model",
+			Created: created,
+			OwnedBy: "openai",
+		})
+	}
+
 	return result, nil
 }
