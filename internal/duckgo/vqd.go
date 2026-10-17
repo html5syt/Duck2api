@@ -273,17 +273,19 @@ const vqdBrowserPrelude = `
   };
 
   // ===== DOM constructors =====
-  function NodeList__(items) {
+  function NodeList(items) {
     var vals = items || [];
     for (var i = 0; i < vals.length; i++) this[i] = vals[i];
     this.length = vals.length;
   }
-  NodeList__.prototype.item = function (i) { return this[i] || null; };
-  NodeList__.prototype.forEach = function (fn) {
+  NodeList.prototype.item = function (i) { return this[i] || null; };
+  NodeList.prototype.forEach = function (fn) {
     for (var i = 0; i < this.length; i++) fn(this[i], i, this);
   };
+  NodeList.prototype.constructor = NodeList;
+  try { Object.defineProperty(NodeList, "name", { value: "NodeList", configurable: true }); } catch (e) {}
 
-  function Element__(tagName) {
+  function Element(tagName) {
     var name = String(tagName || "").toUpperCase();
     this.tagName = name;
     this.nodeType = 1;
@@ -311,17 +313,17 @@ const vqdBrowserPrelude = `
     this.clientWidth = 10;
     this.clientHeight = 10;
   }
-  Element__.prototype.constructor = Element__;
+  Element.prototype.constructor = Element;
 
-  Object.defineProperty(Element__.prototype, "innerHTML", {
+  Object.defineProperty(Element.prototype, "innerHTML", {
     get: function () { return this._innerHTML || ""; },
     set: function (val) {
       var str = String(val || "");
       if (str === "<div><div></div><div></div") {
         this._innerHTML = "<div><div></div><div></div></div>";
-        var div1 = new HTMLDivElement__();
-        var div1_1 = new HTMLDivElement__();
-        var div1_2 = new HTMLDivElement__();
+        var div1 = new HTMLDivElement();
+        var div1_1 = new HTMLDivElement();
+        var div1_2 = new HTMLDivElement();
         div1.appendChild(div1_1);
         div1.appendChild(div1_2);
         this.children = [div1];
@@ -332,20 +334,20 @@ const vqdBrowserPrelude = `
     configurable: true
   });
 
-  Element__.prototype.appendChild = function (child) {
+  Element.prototype.appendChild = function (child) {
     child.parentNode = this;
     child.ownerDocument = this.ownerDocument;
     this.children.push(child);
     return child;
   };
-  Element__.prototype.removeChild = function (child) {
+  Element.prototype.removeChild = function (child) {
     var idx = this.children.indexOf(child);
     if (idx >= 0) { this.children.splice(idx, 1); child.parentNode = null; }
     return child;
   };
 
   function matchesAttributeSelector__(el, selector) {
-    var re = /^([a-z0-9_-]+)\[([a-z0-9_-]+)=(["']?)([^"'\]]+)\3\]$/i;
+    var re = /^([a-z0-9_-]+)\[([a-z0-9_-]+)=(["']?)([^"'\]]+)\]$/i;
     var m = selector.match(re);
     if (!m) return false;
     var tag = m[1].toLowerCase(), attr = m[2], val = m[4];
@@ -364,7 +366,7 @@ const vqdBrowserPrelude = `
     }
   }
 
-  Element__.prototype.querySelectorAll = function (selector) {
+  Element.prototype.querySelectorAll = function (selector) {
     var raw = String(selector || "").trim();
     if (raw === "*") {
       var all = [];
@@ -373,10 +375,10 @@ const vqdBrowserPrelude = `
           collectMatching__(this.children[i], function () { return true; }, all);
         }
       }
-      return new NodeList__(all);
+      return new NodeList(all);
     }
     if (raw.toLowerCase() === "#jsa" && this.ownerDocument && this.ownerDocument.__jsa__) {
-      return new NodeList__([this.ownerDocument.__jsa__]);
+      return new NodeList([this.ownerDocument.__jsa__]);
     }
     if (raw.indexOf("meta[") === 0) {
       var results = [];
@@ -387,42 +389,43 @@ const vqdBrowserPrelude = `
           }, results);
         }
       }
-      return new NodeList__(results);
+      return new NodeList(results);
     }
-    return new NodeList__([]);
+    return new NodeList([]);
   };
-  Element__.prototype.querySelector = function (selector) {
+
+  Element.prototype.querySelector = function (selector) {
     var list = this.querySelectorAll(selector);
     return list.length > 0 ? list[0] : null;
   };
-  Element__.prototype.getAttribute = function (name) {
+  Element.prototype.getAttribute = function (name) {
     var k = String(name || "").toLowerCase();
     return this.attributes[k] !== undefined ? this.attributes[k] : (this.attributes[String(name)] || null);
   };
-  Element__.prototype.setAttribute = function (name, value) {
+  Element.prototype.setAttribute = function (name, value) {
     var k = String(name || "").toLowerCase();
     this.attributes[k] = String(value);
     this.attributes[String(name)] = String(value);
   };
-  Element__.prototype.getBoundingClientRect = function () {
+  Element.prototype.getBoundingClientRect = function () {
     return { width: 10, height: 10, top: 0, right: 10, bottom: 10, left: 0 };
   };
-  Element__.prototype.addEventListener = function () {};
-  Element__.prototype.removeEventListener = function () {};
-  Element__.prototype.focus = function () {};
-  Element__.prototype.blur = function () {};
-  Element__.prototype.cloneNode = function () { return Object.create(this); };
+  Element.prototype.addEventListener = function () {};
+  Element.prototype.removeEventListener = function () {};
+  Element.prototype.focus = function () {};
+  Element.prototype.blur = function () {};
+  Element.prototype.cloneNode = function () { return Object.create(this); };
 
-  function HTMLElement__() { Element__.apply(this, arguments); }
-  HTMLElement__.prototype = Object.create(Element__.prototype);
-  HTMLElement__.prototype.constructor = HTMLElement__;
+  function HTMLElement() { Element.apply(this, arguments); }
+  HTMLElement.prototype = Object.create(Element.prototype);
+  HTMLElement.prototype.constructor = HTMLElement;
 
-  function HTMLDivElement__() { HTMLElement__.apply(this, arguments); }
-  HTMLDivElement__.prototype = Object.create(HTMLElement__.prototype);
-  HTMLDivElement__.prototype.constructor = HTMLDivElement__;
+  function HTMLDivElement() { HTMLElement.apply(this, arguments); }
+  HTMLDivElement.prototype = Object.create(HTMLElement.prototype);
+  HTMLDivElement.prototype.constructor = HTMLDivElement;
 
-  function HTMLIFrameElement__() {
-    HTMLElement__.apply(this, arguments);
+  function HTMLIFrameElement() {
+    HTMLElement.apply(this, arguments);
     var subDoc = makeDocument__();
     var subWin = {
       self: null, window: null, top: globalThis, parent: globalThis, document: subDoc,
@@ -434,21 +437,20 @@ const vqdBrowserPrelude = `
     this.contentWindow = subWin;
     this.contentDocument = subDoc;
   }
-  HTMLIFrameElement__.prototype = Object.create(HTMLElement__.prototype);
-  HTMLIFrameElement__.prototype.constructor = HTMLIFrameElement__;
+  HTMLIFrameElement.prototype = Object.create(HTMLElement.prototype);
+  HTMLIFrameElement.prototype.constructor = HTMLIFrameElement;
 
-  function HTMLScriptElement__() { HTMLElement__.apply(this, arguments); }
-  HTMLScriptElement__.prototype = Object.create(HTMLElement__.prototype);
-  HTMLScriptElement__.prototype.constructor = HTMLScriptElement__;
+  function HTMLScriptElement() { HTMLElement.apply(this, arguments); }
+  HTMLScriptElement.prototype = Object.create(HTMLElement.prototype);
+  HTMLScriptElement.prototype.constructor = HTMLScriptElement;
 
   function createElement__(tagName) {
     var t = String(tagName || "").toLowerCase();
     var el;
-    if (t === "div") el = new HTMLDivElement__();
-    else if (t === "iframe") el = new HTMLIFrameElement__();
-    else if (t === "script") el = new HTMLScriptElement__();
-    else el = new Element__(t);
-    Element__.call(el, t);
+    if (t === "div") el = new HTMLDivElement();
+    else if (t === "iframe") el = new HTMLIFrameElement();
+    else if (t === "script") el = new HTMLScriptElement();
+    else el = new Element(t);
     return el;
   }
 
@@ -466,9 +468,9 @@ const vqdBrowserPrelude = `
   };
 
   function makeDocument__() {
-    var docEl = new Element__("html");
-    var head = new Element__("head");
-    var body = new Element__("body");
+    var docEl = new Element("html");
+    var head = new Element("head");
+    var body = new Element("body");
     docEl.ownerDocument = docEl;
     head.ownerDocument = docEl;
     body.ownerDocument = docEl;
@@ -521,6 +523,7 @@ const vqdBrowserPrelude = `
   var jsaFrame__ = doc__.createElement("iframe");
   jsaFrame__.setAttribute("id", "jsa");
   jsaFrame__.setAttribute("sandbox", "allow-scripts allow-same-origin");
+  jsaFrame__.contentDocument = contentDoc__;
   jsaFrame__.style.cssText = "position: absolute; left: -9999px; top: -9999px;";
   jsaFrame__.srcdoc = "<!DOCTYPE html>\n<html>\n<head>\n<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline';\">\n</head>\n<body></body>\n</html>";
 
@@ -577,6 +580,7 @@ const vqdBrowserPrelude = `
   function defProp__(obj, name, value) {
     Object.defineProperty(obj, name, { value: value, writable: true, configurable: true });
   }
+
   defProp__(globalThis, "window", globalThis);
   defProp__(globalThis, "self", globalThis);
   defProp__(globalThis, "top", globalThis);
@@ -584,12 +588,12 @@ const vqdBrowserPrelude = `
   defProp__(globalThis, "location", docLocation__);
   defProp__(globalThis, "navigator", navigator__);
   defProp__(globalThis, "TextEncoder", TextEncoder__);
-  defProp__(globalThis, "Element", Element__);
-  defProp__(globalThis, "HTMLElement", HTMLElement__);
-  defProp__(globalThis, "HTMLDivElement", HTMLDivElement__);
-  defProp__(globalThis, "HTMLIFrameElement", HTMLIFrameElement__);
-  defProp__(globalThis, "HTMLScriptElement", HTMLScriptElement__);
-  defProp__(globalThis, "NodeList", NodeList__);
+  defProp__(globalThis, "Element", Element);
+  defProp__(globalThis, "HTMLElement", HTMLElement);
+  defProp__(globalThis, "HTMLDivElement", HTMLDivElement);
+  defProp__(globalThis, "HTMLIFrameElement", HTMLIFrameElement);
+  defProp__(globalThis, "HTMLScriptElement", HTMLScriptElement);
+  defProp__(globalThis, "NodeList", NodeList);
   defProp__(globalThis, "__DDG_BE_VERSION__", typeof __goBeVersion !== "undefined" ? __goBeVersion : "serp_20261016_090610_ET");
   defProp__(globalThis, "__DDG_FE_CHAT_HASH__", typeof __goFeHash !== "undefined" ? __goFeHash : "532f77f0f8f67d6d5329fe07a96ea30ee29a242c");
   defProp__(globalThis, "Window", function Window() {});
@@ -597,6 +601,14 @@ const vqdBrowserPrelude = `
     defProp__(globalThis, Symbol.toStringTag, "Window");
     defProp__(contentWin__, Symbol.toStringTag, "Window");
   }
+  globalThis.toString = function () { return "[object Window]"; };
+
+  try { Object.seal(Math); } catch (e) {}
+
+  if (typeof Error.captureStackTrace === "undefined") {
+    Error.captureStackTrace = function () {};
+  }
+
   defProp__(globalThis, "btoa", function (v) { return __goBtoa(v); });
   defProp__(globalThis, "atob", function (v) { return __goAtob(v); });
   defProp__(globalThis, "getComputedStyle", function (el) {
