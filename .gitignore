@@ -18,4 +18,4 @@ tools/authenticator/.proxies.txt.swp
 *.bin
 *.exe
 .playwright-mcp/
-analysis/
+analysis/.venv/
