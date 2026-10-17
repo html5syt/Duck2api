@@ -62,6 +62,12 @@ func GenerateVQDHash(vqdHashRequest string) (string, error) {
 	}
 	jsCode := string(decoded)
 
+	// 1. 优先使用真正的 Chromium 浏览器实例（通过 CDP / Playwright 伴生服务）执行挑战
+	if payload, err := ExecuteVQDHashInChromium(jsCode); err == nil && payload != "" {
+		return base64.StdEncoding.EncodeToString([]byte(payload)), nil
+	}
+
+	// 2. 若 Chromium 不可用，自动无缝 fallback 至经过 13 项探针全面优化的 Goja 模拟引擎
 	payload, err := executeVQDHashScript(jsCode)
 	if err != nil {
 		// 匹配 JS c(e, t) 的 fallback 格式
